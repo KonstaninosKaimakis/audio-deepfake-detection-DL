@@ -1,7 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║         AUDIO DEEPFAKE DETECTION — OFFLINE PREPROCESSING SCRIPT              ║
-║  Extracts, normalizes, and saves spectrograms to disk as .npy files         ║
+║  Extracts, normalizes, and saves spectrograms to disk as .npy files          ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
