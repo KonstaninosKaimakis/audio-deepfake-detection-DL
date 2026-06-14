@@ -265,14 +265,14 @@ class RNNBaseline(nn.Module):
     def __init__(self, num_classes=1):
         super().__init__()
         self.lstm1 = nn.LSTM(input_size=128, hidden_size=128, batch_first=True, bidirectional=True)
-        self.drop1 = nn.Dropout(0.2)
+        self.drop1 = nn.Dropout(0.5)
         self.lstm2 = nn.LSTM(input_size=256, hidden_size=64, batch_first=True, bidirectional=True)
-        self.drop2 = nn.Dropout(0.2)
+        self.drop2 = nn.Dropout(0.5)
         self.relu = nn.ReLU()
         self.classifier = nn.Sequential(
             nn.Linear(128, 256),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.5),
             nn.Linear(256, num_classes)
         )
 
