@@ -1,0 +1,29 @@
+[project]
+name = "audio-deepfake-detection-dl"
+version = "0.1.0"
+requires-python = "==3.12.*"
+dependencies = [
+    "datasets>=5.0.0",
+    "librosa>=0.11.0",
+    "matplotlib>=3.10.9",
+    "numpy>=2.4.6",
+    "pandas>=3.0.3",
+    "pyyaml>=6.0.3",
+    "scikit-learn>=1.9.0",
+    "scipy>=1.17.1",
+    "soundfile>=0.14.0",
+    "tensorboard>=2.20.0",
+    "torch>=2.11.0",
+    "torchaudio>=2.11.0",
+    "tqdm>=4.68.2",
+    "transformers>=5.11.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true        # only used by packages that opt in below
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+torchaudio = [{ index = "pytorch-cu128" }]
