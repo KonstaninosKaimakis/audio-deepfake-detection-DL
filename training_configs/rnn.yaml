@@ -1,0 +1,20 @@
+model:
+  name: "RNNBaseline"
+  spec_type: "mel"
+
+data:
+  train_path: "/kaggle/input/datasets/kostaskaimakis/cnn-rnn-mel-features/cnn_mel_features/training"
+  val_path:   "/kaggle/input/datasets/kostaskaimakis/cnn-rnn-mel-features/cnn_mel_features/validation"
+  test_path:  "/kaggle/input/datasets/kostaskaimakis/cnn-rnn-mel-features/cnn_mel_features/testing"
+  feature_extension: ".npy"
+
+training:
+  seed: 42
+  batch_size: 64
+  epochs: 100
+  learning_rate: 5.0e-4
+  early_stop_patience: 5
+  lr_reduce_patience: 5
+  lr_reduce_factor: 0.5
+  num_workers: 2
+  output_dir: "/kaggle/working/deepfake_detection"

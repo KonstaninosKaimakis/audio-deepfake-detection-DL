@@ -1,0 +1,22 @@
+model:
+  name: "DeepfakeDetectorMLP"
+  hidden_sizes: [256, 128, 64]
+  dropout: 0.5
+  threshold: 0.5
+
+data:
+  train_path: "/kaggle/input/datasets/kostaskaimakis/for-features/features/training_features_20_128_256_128.parquet"
+  val_path: "/kaggle/input/datasets/kostaskaimakis/for-features/features/testing_features_20_128_256_128.parquet"
+  test_path: "/kaggle/input/datasets/kostaskaimakis/for-features/itw_features_20_128_256_128.parquet"
+  num_workers: 2
+
+training:
+  seed: 42
+  epochs: 100
+  batch_size: 64
+  lr: 5.0e-4
+  weight_decay: 1.0e-4
+  patience: 10
+  lr_patience: 5
+  lr_factor: 0.5
+  output_dir: "/kaggle/working/results"
