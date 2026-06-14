@@ -1,0 +1,12 @@
+Model        : RNNBaseline_mel
+Test accuracy: 0.6465
+AUC-ROC      : 0.5919
+
+              precision    recall  f1-score   support
+
+        Real     0.6484    0.9552    0.7724     19963
+        Fake     0.6225    0.1249    0.2081     11816
+
+    accuracy                         0.6465     31779
+   macro avg     0.6355    0.5400    0.4903     31779
+weighted avg     0.6388    0.6465    0.5626     31779
