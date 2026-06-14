@@ -1,0 +1,20 @@
+model:
+  name: microsoft/wavlm-base-plus
+  hidden: 256          # head bottleneck dim (not WavLM's 768-d hidden_size)
+  dropout: 0.5
+  # num_layers: 13     # unused since the last-layer model dropped the weighted-sum
+
+data:
+  # train/val = FoR (in-domain); test = ITW (cross-dataset)
+  train_dir: data/FoR_dataset/for-norm/for-norm/training
+  val_dir:   data/FoR_dataset/for-norm/for-norm/validation
+  test_dir:  data/in-the-wild-audio-deepfake/release_in_the_wild_normalized
+  max_duration_sec: 8.0
+  sample_rate: 16000
+
+training:
+  seed: 42
+  epochs: 10
+  batch_size: 16
+  lr: 1.0e-4
+  output_dir: wavlm_base_plus
