@@ -220,3 +220,7 @@ __marimo__/
 # Data folder
 data/*
 .idea/*
+
+wavlm_base_plus/*
+outputs/*
+wavlm_base_plus_finetune/*
