@@ -7,6 +7,7 @@ from transformers import WavLMModel
 from scripts.wavlm.wavlm_dataset import WavLMDataset
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score
 from scripts.wavlm.utils import load_config, seed_everything, build_dataloaders, build_model, build_optimizer, build_scheduler
+from scripts.wavlm.wavlm_extract import load_or_extract, cached_loader
 
 
 class WavLMClassifier(nn.Module):
@@ -29,9 +30,14 @@ class WavLMClassifier(nn.Module):
 
         # extract wavlm hidden size from model configuration
         wavlm_hidden_size = self.wavlm_model.config.hidden_size
-        
+
+        # one learnable weight per hidden state (embedding + 12 transformer layers = 13)
+        num_layers = self.wavlm_model.config.num_hidden_layers + 1
+        self.layer_weights = nn.Parameter(torch.zeros(num_layers))
+
         self.head = nn.Sequential(
             nn.Linear(wavlm_hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_size, 2),
@@ -41,48 +47,49 @@ class WavLMClassifier(nn.Module):
         mask = attention_mask.unsqueeze(-1).expand(hidden.size()).float()
         mean = torch.sum(hidden * mask, 1) / torch.clamp(mask.sum(1), min=1e-9)
         return mean
-    
+
+    def weighted_sum(self, layer_feats):
+        # layer_feats: (B, num_layers, 768) -> (B, 768)
+        norm_weights = torch.softmax(self.layer_weights, dim=0).view(-1, 1)
+        return torch.sum(layer_feats * norm_weights, dim=1)
+
     def forward(self, input_values, attention_mask=None):
-        last_transformer_layer_output = self.wavlm_model(
+        hidden_states = self.wavlm_model(
             input_values=input_values,
             attention_mask=attention_mask,
             output_hidden_states=True,
-        ).last_hidden_state
+        ).hidden_states
 
         if attention_mask is not None:
             frame_mask = self.wavlm_model._get_feature_vector_attention_mask(
-                last_transformer_layer_output.shape[1],
+                hidden_states[0].shape[1],
                 attention_mask=attention_mask
             )
-            pooled = self.mean_pooling(last_transformer_layer_output, frame_mask)
-        
+            pooled = [self.mean_pooling(h, frame_mask) for h in hidden_states]
         else:
-            pooled = last_transformer_layer_output.mean(dim=1)
-        
-        logits = self.head(pooled)
+            pooled = [h.mean(dim=1) for h in hidden_states]
+
+        layer_feats = torch.stack(pooled, dim=1)   # (B, num_layers, 768)
+        logits = self.head(self.weighted_sum(layer_feats))
 
         return logits
 
 
-def train(model, loader, optimizer, device):
-    model.train()
-    
+def train_model(model, loader, optimizer, device):
+    model.head.train()
     criterion = nn.CrossEntropyLoss()
-    
+    trainable = [p for p in model.parameters() if p.requires_grad]
     total_loss = 0.0
     correct = 0
     n = 0
 
-    for x, mask, y in loader:
-        x=x.to(device)
-        mask=mask.to(device)
-        y=y.to(device)
-
+    for feats, y in loader:
+        feats, y = feats.to(device), y.to(device)
         optimizer.zero_grad()
-        logits = model(x, attention_mask=mask)
+        logits = model.head(model.weighted_sum(feats))
         loss = criterion(logits, y)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(trainable, 1.0)
         optimizer.step()
         total_loss += loss.item() * y.size(0)
         correct += (logits.argmax(1) == y).sum().item()
@@ -90,19 +97,18 @@ def train(model, loader, optimizer, device):
     return total_loss / n, correct / n
 
 @torch.no_grad()
-def evaluate(model, loader, device):
-    model.eval()
-
+def evaluate_model(model, loader, device):
+    model.head.eval()
     criterion = nn.CrossEntropyLoss()
     total_loss = 0.0
     n = 0
     all_preds = []
     all_labels = []
     all_probs = []
- 
-    for x, mask, y in loader:
-        x, mask, y = x.to(device), mask.to(device), y.to(device)
-        logits = model(x, attention_mask=mask)
+
+    for feats, y in loader:
+        feats, y = feats.to(device), y.to(device)
+        logits = model.head(model.weighted_sum(feats))
         total_loss += criterion(logits, y).item() * y.size(0)
         n += y.size(0)
  
@@ -147,24 +153,45 @@ if __name__ == "__main__":
     model = build_model(cfg, WavLMClassifier, device)
     optimizer = build_optimizer(cfg, model)
     scheduler = build_scheduler(cfg, optimizer)
- 
+
     Path(cfg.training.output_dir).mkdir(parents=True, exist_ok=True)
+
+    cache_dir = Path(cfg.training.output_dir) / "cache"
+    print("\nPreparing feature cache...")
+    train_feats, train_labels = load_or_extract(model, train_loader, cache_dir / "train.pt", device)
+    val_feats,   val_labels   = load_or_extract(model, val_loader,   cache_dir / "val.pt",   device)
+    test_feats,  test_labels  = load_or_extract(model, test_loader,  cache_dir / "test.pt",  device)
+
+    train_loader = cached_loader(train_feats, train_labels, cfg.training.batch_size, shuffle=True)
+    val_loader   = cached_loader(val_feats,   val_labels,   cfg.training.batch_size, shuffle=False)
+    test_loader  = cached_loader(test_feats,  test_labels,  cfg.training.batch_size, shuffle=False)
+
     best_acc = 0.0
- 
-    best_path = f"{cfg.training.output_dir}/best.pt"
+    best_path = f"{cfg.training.output_dir}/best_head.pt"
+
     for epoch in range(1, cfg.training.epochs + 1):
-        tr_loss, tr_acc = train(model, train_loader, optimizer, device)
-        val = evaluate(model, val_loader, device)
+        tr_loss, tr_acc = train_model(model, train_loader, optimizer, device)
+        val = evaluate_model(model, val_loader, device)
         scheduler.step()
-        print(f"Epoch {epoch:02d} | train {tr_loss:.4f}/{tr_acc:.3f} | "
-              f"val loss {val['loss']:.4f} acc {val['acc']:.3f} auc {val['auc']:.3f}")
+        print(f"Epoch {epoch:02d} | train loss {tr_loss:.4f}  acc {tr_acc:.3f} | "
+              f"val loss {val['loss']:.4f}  acc {val['acc']:.3f}  auc {val['auc']:.3f}")
         if val["acc"] > best_acc:
             best_acc = val["acc"]
-            torch.save(model.state_dict(), best_path)
+            torch.save({"head": model.head.state_dict(),
+                        "layer_weights": model.layer_weights.detach().cpu()}, best_path)
             print(f"  saved best (val_acc={best_acc:.3f})")
 
     # final evaluation with the best-val checkpoint: in-domain (FoR) + cross-dataset (ITW)
-    model.load_state_dict(torch.load(best_path, map_location=device))
+    ckpt = torch.load(best_path, map_location=device)
+    model.head.load_state_dict(ckpt["head"])
+    model.layer_weights.data = ckpt["layer_weights"].to(device)
+
+    # learned per-layer importance: raw logits and the softmax weights actually used
+    raw = model.layer_weights.tolist()
+    norm = torch.softmax(model.layer_weights, dim=0).tolist()
+    print("\nLearned layer weights:")
+    for i, (r, w) in enumerate(zip(raw, norm)):
+        print(f"  layer {i:02d}: raw {r:+.4f}  softmax {w:.4f}")
 
     def _report(name, m):
         print(f"\n{name}:")
@@ -172,5 +199,5 @@ if __name__ == "__main__":
         print(f"  real:  precision {m['precision_real']:.3f} | recall {m['recall_real']:.3f} | f1 {m['f1_real']:.3f}")
         print(f"  fake:  precision {m['precision_fake']:.3f} | recall {m['recall_fake']:.3f} | f1 {m['f1_fake']:.3f}")
 
-    _report("FoR validation (in-domain)", evaluate(model, val_loader, device))
-    _report("ITW (cross-dataset) test",   evaluate(model, test_loader, device))
+    _report("FoR validation (in-domain)", evaluate_model(model, val_loader, device))
+    _report("ITW (cross-dataset) test",   evaluate_model(model, test_loader, device))

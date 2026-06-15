@@ -56,7 +56,8 @@ def build_model(cfg, model_class, device):
 #     ], weight_decay=1e-2)
 
 def build_optimizer(cfg, model):
-    return torch.optim.AdamW(model.head.parameters(), lr=cfg.training.lr, weight_decay=1e-2)
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    return torch.optim.AdamW(trainable, lr=cfg.training.lr, weight_decay=1e-2)
 
 def build_scheduler(cfg, optimizer):
     return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.training.epochs)
