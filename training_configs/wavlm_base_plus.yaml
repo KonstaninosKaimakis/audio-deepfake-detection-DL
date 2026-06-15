@@ -7,7 +7,7 @@ model:
 data:
   # train/val = FoR (in-domain); test = ITW (cross-dataset)
   train_dir: data/FoR_dataset/for-norm/for-norm/training
-  val_dir:   data/FoR_dataset/for-norm/for-norm/validation
+  val_dir:   data/FoR_dataset/for-norm/for-norm/testing
   test_dir:  data/in-the-wild-audio-deepfake/release_in_the_wild_normalized
   max_duration_sec: 8.0
   sample_rate: 16000
@@ -18,3 +18,24 @@ training:
   batch_size: 16
   lr: 1.0e-4
   output_dir: wavlm_base_plus
+
+finetune:
+  freeze_backbone: false   # false = full fine-tune (conv encoder + all transformer layers trainable)
+  epochs: 10
+  batch_size: 32
+  max_duration_sec: 4.0    # shorter clips than the probe to fit the backbone backward pass in 16 GB
+  lr_backbone: 1.0e-5      # low LR for the pretrained WavLM weights
+  lr_head: 1.0e-4          # higher LR for the fresh head + layer_weights
+  warmup_ratio: 0.1
+  weight_decay: 1.0e-2
+  grad_checkpointing: true # trade compute for VRAM (recompute activations in backward)
+  output_dir: wavlm_base_plus_finetune
+
+augment:                   # online waveform augmentation, applied to the TRAIN split only
+  enabled: true
+  musan_dir: data/musan
+  rir_dir:   data/RIRS_NOISES/simulated_rirs
+  snr_db_range: [0, 15]    # MUSAN additive-noise SNR, uniformly sampled
+  p_noise: 0.5             # noise & rir are independent -> {neither, noise, rir, both}
+  p_rir:   0.5
+  p_codec: 0.5             # mp3 / opus / trans-codec, or none

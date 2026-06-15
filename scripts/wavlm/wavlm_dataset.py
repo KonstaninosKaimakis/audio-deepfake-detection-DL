@@ -13,6 +13,7 @@ class WavLMDataset(Dataset):
         padding = False,
         return_attention_mask = False,
         sample_rate = 16000,
+        augment = None,
         ):
         self.extractor = extractor
         self.labels = labels
@@ -20,6 +21,7 @@ class WavLMDataset(Dataset):
         self.padding = padding
         self.return_attention_mask = return_attention_mask
         self.sample_rate = sample_rate
+        self.augment = augment   # callable(waveform)->waveform, TRAIN split only; None = off
         split_dir = Path(split_directory)
         if max_duration_sec is not None:
             self.max_samples = int(max_duration_sec * sample_rate)
@@ -45,7 +47,9 @@ class WavLMDataset(Dataset):
     
     def __getitem__(self, idx):
         path, label = self.samples[idx]
-        wav, _ = librosa.load(path, sr=None, mono=True)
+        wav, _ = librosa.load(path, sr=self.sample_rate, mono=True)
+        if self.augment is not None:
+            wav = self.augment(wav)          # numpy in -> numpy out (noise / RIR / codec)
         wav = torch.from_numpy(wav)
  
         if wav.shape[0] >= self.max_samples:

@@ -15,18 +15,18 @@ class WavLMClassifier(nn.Module):
         self,
         model='microsoft/wavlm-base-plus',
         hidden_size = 256,
-        dropout = 0.5
+        dropout = 0.5,
+        freeze_backbone = True
     ):
         super().__init__()
 
         self.wavlm_model = WavLMModel.from_pretrained(model)
-        
-        # freeze wavlm weights -> only train classifier head
-        # self.wavlm_model.freeze_feature_encoder()
-        
-        # freeze everything
-        for p in self.wavlm_model.parameters():
-            p.requires_grad = False
+
+        if freeze_backbone:
+            # frozen probe (cached features): train only head + layer_weights
+            for p in self.wavlm_model.parameters():
+                p.requires_grad = False
+        # else: full fine-tune -> everything trainable, including the conv feature encoder
 
         # extract wavlm hidden size from model configuration
         wavlm_hidden_size = self.wavlm_model.config.hidden_size
@@ -35,13 +35,15 @@ class WavLMClassifier(nn.Module):
         num_layers = self.wavlm_model.config.num_hidden_layers + 1
         self.layer_weights = nn.Parameter(torch.zeros(num_layers))
 
-        self.head = nn.Sequential(
-            nn.Linear(wavlm_hidden_size, hidden_size),
-            nn.BatchNorm1d(hidden_size),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, 2),
-        )
+        # self.head = nn.Sequential(
+        #     nn.Linear(wavlm_hidden_size, hidden_size),
+        #     nn.BatchNorm1d(hidden_size),
+        #     nn.GELU(),
+        #     nn.Dropout(dropout),
+        #     nn.Linear(hidden_size, 2),
+        # )
+
+        self.head = nn.Linear(wavlm_hidden_size, 2)
 
     def mean_pooling(self, hidden, attention_mask):
         mask = attention_mask.unsqueeze(-1).expand(hidden.size()).float()
