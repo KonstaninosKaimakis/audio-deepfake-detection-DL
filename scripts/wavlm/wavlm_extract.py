@@ -1,15 +1,16 @@
 import torch
 from pathlib import Path
+from tqdm import tqdm
 from torch.utils.data import TensorDataset, DataLoader
 
 
 @torch.no_grad()
-def extract_features(model, loader, device):
+def extract_features(model, loader, device, desc="extracting"):
     model.eval()
     all_feats = []
     all_labels = []
 
-    for x, mask, y in loader:
+    for x, mask, y in tqdm(loader, desc=desc, leave=False):
         x, mask = x.to(device), mask.to(device)
         out = model.wavlm_model(
             input_values=x,
@@ -36,7 +37,7 @@ def load_or_extract(model, loader, cache_path, device):
         return data["features"], data["labels"]
 
     print(f"  extracting  ->  {cache_path}")
-    feats, labels = extract_features(model, loader, device)
+    feats, labels = extract_features(model, loader, device, desc=f"extract {cache_path.stem}")
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"features": feats, "labels": labels}, cache_path)
     return feats, labels
