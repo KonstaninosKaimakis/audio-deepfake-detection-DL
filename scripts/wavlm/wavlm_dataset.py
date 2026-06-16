@@ -47,13 +47,19 @@ class WavLMDataset(Dataset):
     
     def __getitem__(self, idx):
         path, label = self.samples[idx]
+
+        # enforce sample rate at load for exact dimensional consistency
         wav, _ = librosa.load(path, sr=self.sample_rate, mono=True)
         if self.augment is not None:
             wav = self.augment(wav)          # numpy in -> numpy out (noise / RIR / codec)
         wav = torch.from_numpy(wav)
- 
+
+        # removes per-domain level/gain differences (FoR vs ITW) that widen the domain gap.
+        wav = (wav - wav.mean()) / torch.sqrt(wav.var() + 1e-7)
+
         if wav.shape[0] >= self.max_samples:
-            start = torch.randint(0, wav.shape[0] - self.max_samples + 1, (1,)).item()
+            # reproducible eval and stable cached features (no random-offset slices)
+            start = (wav.shape[0] - self.max_samples) // 2
             wav = wav[start : start + self.max_samples]
             mask = torch.ones(self.max_samples, dtype=torch.long)
         else:
