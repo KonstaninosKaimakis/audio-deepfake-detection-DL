@@ -19,6 +19,16 @@ def load_config(path):
         return _to_namespace(yaml.safe_load(f))
 
 
+def config_to_dict(cfg):
+    # recursively convert a SimpleNamespace config back to a plain dict, so the actual
+    # resolved config (not just the file path) can be embedded in the metrics JSON.
+    if isinstance(cfg, SimpleNamespace):
+        return {k: config_to_dict(v) for k, v in vars(cfg).items()}
+    if isinstance(cfg, (list, tuple)):
+        return [config_to_dict(v) for v in cfg]
+    return cfg
+
+
 def seed_everything(seed: int = 42):
     random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)

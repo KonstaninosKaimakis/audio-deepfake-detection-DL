@@ -8,7 +8,7 @@ from datetime import datetime
 from transformers import WavLMModel
 from scripts.wavlm.wavlm_dataset import WavLMDataset
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score
-from scripts.wavlm.utils import load_config, seed_everything, build_dataloaders, build_model, build_optimizer, build_scheduler, compute_eer
+from scripts.wavlm.utils import load_config, seed_everything, build_dataloaders, build_model, build_optimizer, build_scheduler, compute_eer, config_to_dict
 from scripts.wavlm.wavlm_extract import load_or_extract, cached_loader
 
 
@@ -211,7 +211,8 @@ if __name__ == "__main__":
     _report("ITW (cross-dataset) test",   test_metrics)
 
     results = {
-        "config":                args.config,
+        "config_file":           args.config,
+        "config":                config_to_dict(cfg),
         "best_val_acc":          best_acc,
         "layer_weights_raw":     raw,
         "layer_weights_softmax": norm,

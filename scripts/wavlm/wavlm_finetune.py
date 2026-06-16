@@ -19,6 +19,7 @@ from scripts.wavlm.utils import (
     build_finetune_optimizer,
     build_finetune_scheduler,
     compute_eer,
+    config_to_dict,
 )
 
 
@@ -190,7 +191,8 @@ if __name__ == "__main__":
     _report("ITW (cross-dataset) test",   test_metrics)
 
     results = {
-        "config":                args.config,
+        "config_file":           args.config,
+        "config":                config_to_dict(cfg),
         "freeze_backbone":       cfg.finetune.freeze_backbone,
         "best_val_loss":         best_loss,
         "augmentation":          aug.as_dict() if aug is not None else None,
