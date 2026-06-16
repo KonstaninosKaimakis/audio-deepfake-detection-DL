@@ -15,8 +15,10 @@ from scripts.wavlm.utils import (
     seed_everything, 
     build_dataloaders, 
     build_model,
-    build_finetune_optimizer, 
-    build_finetune_scheduler
+    apply_partial_freeze,
+    build_finetune_optimizer,
+    build_finetune_scheduler,
+    compute_eer,
 )
 
 
@@ -80,6 +82,7 @@ def evaluate(model, loader, device):
     acc = accuracy_score(all_labels, all_preds)
     precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average=None, labels=[0, 1])
     auc = roc_auc_score(all_labels, all_probs)
+    eer = compute_eer(all_labels, all_probs)
 
     return {
         "loss":           total_loss / n,
@@ -91,6 +94,7 @@ def evaluate(model, loader, device):
         "recall_fake":    recall[1],
         "f1_fake":        f1[1],
         "auc":            auc,
+        "eer":            eer,
     }
 
 
@@ -109,11 +113,12 @@ if __name__ == "__main__":
     # raw-audio dataloaders (NO cache: backbone weights change every step)
     # augment_train=True applies online augmentation to the TRAIN split only
     train_loader, val_loader, test_loader = build_dataloaders(
-        cfg, 
+        cfg,
         WavLMDataset,
         max_duration_sec=cfg.finetune.max_duration_sec,
         batch_size=cfg.finetune.batch_size,
         augment_train=True,
+        num_workers=getattr(cfg.finetune, "num_workers", 4),
     )
 
     aug = train_loader.dataset.augment
@@ -123,6 +128,13 @@ if __name__ == "__main__":
             print(f"  {k}: {v}")
 
     model = build_model(cfg, WavLMClassifier, device, freeze_backbone=cfg.finetune.freeze_backbone)
+    # partial fine-tune: freeze the conv feature encoder + bottom transformer layers (anti-overfit)
+    if not cfg.finetune.freeze_backbone:
+        n_trainable_layers = getattr(cfg.finetune, "n_trainable_layers", None)
+        freeze_feature_encoder = getattr(cfg.finetune, "freeze_feature_encoder", True)
+        apply_partial_freeze(model, n_trainable_layers, freeze_feature_encoder)
+        print(f"Partial freeze: top {n_trainable_layers} transformer layers trainable, "
+              f"freeze_feature_encoder={freeze_feature_encoder}")
     if cfg.finetune.grad_checkpointing:
         model.wavlm_model.gradient_checkpointing_enable()
 
@@ -137,6 +149,9 @@ if __name__ == "__main__":
     best_loss = float("inf")
     best_path = f"{cfg.finetune.output_dir}/best_model.pt"
 
+    patience = getattr(cfg.finetune, "patience", None)   # None / <=0 disables early stopping
+    epochs_no_improve = 0
+
     for epoch in range(1, cfg.finetune.epochs + 1):
         tr_loss, tr_acc = train_epoch(model, train_loader, optimizer, scheduler, device)
         val = evaluate(model, val_loader, device)
@@ -144,8 +159,15 @@ if __name__ == "__main__":
               f"val loss {val['loss']:.4f}  acc {val['acc']:.3f}  auc {val['auc']:.3f}")
         if val["loss"] < best_loss:
             best_loss = val["loss"]
+            epochs_no_improve = 0
             torch.save(model.state_dict(), best_path)
             print(f"  saved best (val_loss={best_loss:.4f})")
+        else:
+            epochs_no_improve += 1
+            if patience and epochs_no_improve >= patience:
+                print(f"  early stop: no val-loss improvement for {patience} epochs "
+                      f"(best={best_loss:.4f} @ epoch {epoch - epochs_no_improve})")
+                break
 
     # final evaluation with the best-val checkpoint: in-domain (FoR) + cross-dataset (ITW)
     model.load_state_dict(torch.load(best_path, map_location=device))
@@ -158,7 +180,7 @@ if __name__ == "__main__":
 
     def _report(name, m):
         print(f"\n{name}:")
-        print(f"  loss {m['loss']:.4f} | acc {m['acc']:.3f} | auc {m['auc']:.4f}")
+        print(f"  loss {m['loss']:.4f} | acc {m['acc']:.3f} | auc {m['auc']:.4f} | eer {m['eer']:.4f}")
         print(f"  real:  precision {m['precision_real']:.3f} | recall {m['recall_real']:.3f} | f1 {m['f1_real']:.3f}")
         print(f"  fake:  precision {m['precision_fake']:.3f} | recall {m['recall_fake']:.3f} | f1 {m['f1_fake']:.3f}")
 
