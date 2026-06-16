@@ -8,15 +8,15 @@ data:
   # train/val = FoR (in-domain); test = ITW (cross-dataset)
   train_dir: data/FoR_dataset/for-norm/for-norm/training
   val_dir:   data/FoR_dataset/for-norm/for-norm/testing
-  test_dir:  data/in-the-wild-audio-deepfake/release_in_the_wild_normalized
-  max_duration_sec: 8.0
+  test_dir:  data/in-the-wild-audio-deepfake/release_in_the_wild_trimmed_normalized
+  max_duration_sec: 5.0
   sample_rate: 16000
 
 training:
   seed: 42
-  epochs: 10
-  batch_size: 16
-  lr: 1.0e-4
+  epochs: 20
+  batch_size: 32
+  lr: 1.0e-3
   output_dir: wavlm_base_plus
 
 finetune:
@@ -25,7 +25,7 @@ finetune:
   batch_size: 32
   max_duration_sec: 4.0    # shorter clips than the probe to fit the backbone backward pass in 16 GB
   lr_backbone: 1.0e-5      # low LR for the pretrained WavLM weights
-  lr_head: 1.0e-4          # higher LR for the fresh head + layer_weights
+  lr_head: 1.0e-3          # higher LR for the fresh head + layer_weights
   warmup_ratio: 0.1
   weight_decay: 1.0e-2
   grad_checkpointing: true # trade compute for VRAM (recompute activations in backward)
