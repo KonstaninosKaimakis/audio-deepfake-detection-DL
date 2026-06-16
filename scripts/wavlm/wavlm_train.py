@@ -1,8 +1,10 @@
+import json
 import torch
 import argparse
 import numpy as np
 import torch.nn as nn
 from pathlib import Path
+from datetime import datetime
 from transformers import WavLMModel
 from scripts.wavlm.wavlm_dataset import WavLMDataset
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score
@@ -201,5 +203,21 @@ if __name__ == "__main__":
         print(f"  real:  precision {m['precision_real']:.3f} | recall {m['recall_real']:.3f} | f1 {m['f1_real']:.3f}")
         print(f"  fake:  precision {m['precision_fake']:.3f} | recall {m['recall_fake']:.3f} | f1 {m['f1_fake']:.3f}")
 
-    _report("FoR validation (in-domain)", evaluate_model(model, val_loader, device))
-    _report("ITW (cross-dataset) test",   evaluate_model(model, test_loader, device))
+    val_metrics  = evaluate_model(model, val_loader, device)
+    test_metrics = evaluate_model(model, test_loader, device)
+    _report("FoR validation (in-domain)", val_metrics)
+    _report("ITW (cross-dataset) test",   test_metrics)
+
+    results = {
+        "config":                args.config,
+        "best_val_acc":          best_acc,
+        "layer_weights_raw":     raw,
+        "layer_weights_softmax": norm,
+        "for_val":               val_metrics,
+        "itw_test":              test_metrics,
+    }
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    metrics_path = f"{cfg.training.output_dir}/metrics_{stamp}.json"
+    with open(metrics_path, "w") as f:
+        json.dump(results, f, indent=2, default=float)   # default=float casts any numpy scalars
+    print(f"\nSaved metrics -> {metrics_path}")
