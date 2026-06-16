@@ -212,6 +212,27 @@ class WavLMAugmentationPipeline:
         decoded = np.concatenate(pieces).astype(np.float32)
         return torch.from_numpy(decoded).unsqueeze(0)
 
+    def encode_with_codec(self, wav, codec_cfg, match_length=True):
+        """Render one specific codec config over a waveform (offline pre-augmentation).
+
+        wav: (1, T) or (T,) tensor / ndarray. codec_cfg: a DEFAULT_CODEC_CONFIGS-style dict or a
+        codec name string. Returns a (1, T') float32 tensor. Raises on failure (no silent skip),
+        so the precompute script can report it.
+        """
+        if isinstance(codec_cfg, str):
+            match = [c for c in self.codec_configs if c["name"] == codec_cfg]
+            if not match:
+                raise ValueError(f"unknown codec '{codec_cfg}'")
+            codec_cfg = match[0]
+        if isinstance(wav, np.ndarray):
+            wav = torch.from_numpy(wav).float()
+        if wav.dim() == 1:
+            wav = wav.unsqueeze(0)
+        x = wav
+        for fmt, encoder, bit_rate in codec_cfg["chain"]:
+            x = self._encode_once(x, fmt, encoder, bit_rate)
+        return self._match_length(x, wav.shape[-1]) if match_length else x
+
     def _apply_codec(self, wav):             # wav (1, T)
         cfg = random.choice(self.codec_configs)
         try:
