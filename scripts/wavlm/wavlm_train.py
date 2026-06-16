@@ -8,7 +8,7 @@ from datetime import datetime
 from transformers import WavLMModel
 from scripts.wavlm.wavlm_dataset import WavLMDataset
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score
-from scripts.wavlm.utils import load_config, seed_everything, build_dataloaders, build_model, build_optimizer, build_scheduler
+from scripts.wavlm.utils import load_config, seed_everything, build_dataloaders, build_model, build_optimizer, build_scheduler, compute_eer
 from scripts.wavlm.wavlm_extract import load_or_extract, cached_loader
 
 
@@ -128,6 +128,7 @@ def evaluate_model(model, loader, device):
     acc = accuracy_score(all_labels, all_preds)
     precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average=None, labels=[0, 1])
     auc = roc_auc_score(all_labels, all_probs)
+    eer = compute_eer(all_labels, all_probs)
 
     return {
         "loss":           total_loss / n,
@@ -139,6 +140,7 @@ def evaluate_model(model, loader, device):
         "recall_fake":    recall[1],
         "f1_fake":        f1[1],
         "auc":            auc,
+        "eer":            eer,
     }
     
 if __name__ == "__main__":
@@ -199,7 +201,7 @@ if __name__ == "__main__":
 
     def _report(name, m):
         print(f"\n{name}:")
-        print(f"  loss {m['loss']:.4f} | acc {m['acc']:.3f} | auc {m['auc']:.4f}")
+        print(f"  loss {m['loss']:.4f} | acc {m['acc']:.3f} | auc {m['auc']:.4f} | eer {m['eer']:.4f}")
         print(f"  real:  precision {m['precision_real']:.3f} | recall {m['recall_real']:.3f} | f1 {m['f1_real']:.3f}")
         print(f"  fake:  precision {m['precision_fake']:.3f} | recall {m['recall_fake']:.3f} | f1 {m['f1_fake']:.3f}")
 
