@@ -1,0 +1,46 @@
+model:
+  name: microsoft/wavlm-base-plus
+  hidden: 256          # head bottleneck dim (not WavLM's 768-d hidden_size)
+  dropout: 0.5
+  # num_layers: 13     # unused since the last-layer model dropped the weighted-sum
+
+data:
+  # train/val = FoR (in-domain); test = ITW (cross-dataset)
+  train_dir: data/FoR_dataset/for-norm/for-norm/training
+  val_dir:   data/FoR_dataset/for-norm/for-norm/testing
+  test_dir:  data/in-the-wild-audio-deepfake/release_in_the_wild_trimmed_normalized
+  max_duration_sec: 5.0
+  sample_rate: 16000
+
+training:
+  seed: 42
+  epochs: 20
+  batch_size: 32
+  lr: 1.0e-3
+  output_dir: wavlm_base_plus
+
+finetune:
+  freeze_backbone: false   # false = fine-tune backbone (subject to partial-freeze knobs below)
+  freeze_feature_encoder: true  # freeze the conv feature encoder (low-level acoustics, overfits fast)
+  n_trainable_layers: 2    # keep only the top N of 12 transformer layers trainable (rest frozen); null = all
+  epochs: 50
+  batch_size: 32
+  max_duration_sec: 4.0    # shorter clips than the probe to fit the backbone backward pass in 16 GB
+  lr_backbone: 1.0e-5      # low LR for the pretrained WavLM weights
+  lr_head: 1.0e-3          # higher LR for the fresh head + layer_weights
+  warmup_ratio: 0.1
+  weight_decay: 1.0e-2
+  grad_checkpointing: true # trade compute for VRAM (recompute activations in backward)
+  num_workers: 8           # codec disabled below, so no ffmpeg ENOMEM risk -> full worker count for fast loading
+  patience: 5              # early stop: stop if val loss hasn't improved for this many epochs
+  output_dir: wavlm_base_plus_finetune
+
+augment:                   # online waveform augmentation, applied to the TRAIN split only
+  enabled: true
+  musan_dir: data/musan
+  rir_dir:   data/RIRS_NOISES/simulated_rirs
+  snr_db_range: [0, 15]    # MUSAN additive-noise SNR, uniformly sampled
+  p_noise: 0.5             # noise & rir are independent -> {neither, noise, rir, both}
+  p_rir:   0.5
+  p_codec: 0.5             # prob of swapping in a pre-rendered codec variant (OFFLINE; run wavlm_precompute_codec.py)
+  codec_cache_dir: data/codec_cache  # where wavlm_precompute_codec.py writes the variants

@@ -218,4 +218,9 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Data folder
-data/
+data/*
+.idea/*
+
+wavlm_base_plus/*
+outputs/*
+wavlm_base_plus_finetune/*
