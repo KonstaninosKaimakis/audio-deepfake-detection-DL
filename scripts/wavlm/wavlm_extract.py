@@ -21,8 +21,9 @@ def extract_features(model, loader, device, desc="extracting"):
             out.last_hidden_state.shape[1],
             attention_mask=mask,
         )
-        pooled = [model.mean_pooling(h, frame_mask) for h in out.hidden_states]  # 13 x (B, 768)
-        feats = torch.stack(pooled, dim=1)                                       # (B, 13, 768)
+        # drop embedding/CNN hidden state (hidden_states[0]); keep the 12 transformer layers
+        pooled = [model.mean_pooling(h, frame_mask) for h in out.hidden_states[1:]]  # 12 x (B, 768)
+        feats = torch.stack(pooled, dim=1)                                           # (B, 12, 768)
         all_feats.append(feats.cpu())
         all_labels.append(y)
 

@@ -202,7 +202,7 @@ if __name__ == "__main__":
         "itw_test":              test_metrics,
     }
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    metrics_path = f"{cfg.finetune.output_dir}/metrics_{stamp}.json"
+    metrics_path = f"{cfg.finetune.output_dir}/metrics_finetune_{stamp}.json"
     with open(metrics_path, "w") as f:
         json.dump(results, f, indent=2, default=float)   # default=float casts any numpy scalars
     print(f"\nSaved metrics -> {metrics_path}")

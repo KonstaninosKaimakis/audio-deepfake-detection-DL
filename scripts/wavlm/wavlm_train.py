@@ -33,8 +33,9 @@ class WavLMClassifier(nn.Module):
         # extract wavlm hidden size from model configuration
         wavlm_hidden_size = self.wavlm_model.config.hidden_size
 
-        # one learnable weight per hidden state (embedding + 12 transformer layers = 13)
-        num_layers = self.wavlm_model.config.num_hidden_layers + 1
+        # one learnable weight per transformer layer (12); the embedding/CNN hidden state
+        # (hidden_states[0]) is dropped from the weighted sum.
+        num_layers = self.wavlm_model.config.num_hidden_layers
         self.layer_weights = nn.Parameter(torch.zeros(num_layers))
 
         # self.head = nn.Sequential(
@@ -64,16 +65,18 @@ class WavLMClassifier(nn.Module):
             output_hidden_states=True,
         ).hidden_states
 
+        transformer_states = hidden_states[1:]   # drop embedding/CNN hidden state (12 layers)
+
         if attention_mask is not None:
             frame_mask = self.wavlm_model._get_feature_vector_attention_mask(
                 hidden_states[0].shape[1],
                 attention_mask=attention_mask
             )
-            pooled = [self.mean_pooling(h, frame_mask) for h in hidden_states]
+            pooled = [self.mean_pooling(h, frame_mask) for h in transformer_states]
         else:
-            pooled = [h.mean(dim=1) for h in hidden_states]
+            pooled = [h.mean(dim=1) for h in transformer_states]
 
-        layer_feats = torch.stack(pooled, dim=1)   # (B, num_layers, 768)
+        layer_feats = torch.stack(pooled, dim=1)   # (B, 12, 768)
         logits = self.head(self.weighted_sum(layer_feats))
 
         return logits
@@ -220,7 +223,7 @@ if __name__ == "__main__":
         "itw_test":              test_metrics,
     }
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    metrics_path = f"{cfg.training.output_dir}/metrics_{stamp}.json"
+    metrics_path = f"{cfg.training.output_dir}/metrics_probe_{stamp}.json"
     with open(metrics_path, "w") as f:
         json.dump(results, f, indent=2, default=float)   # default=float casts any numpy scalars
     print(f"\nSaved metrics -> {metrics_path}")

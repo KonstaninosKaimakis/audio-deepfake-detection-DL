@@ -22,7 +22,7 @@ training:
 finetune:
   freeze_backbone: false   # false = fine-tune backbone (subject to partial-freeze knobs below)
   freeze_feature_encoder: true  # freeze the conv feature encoder (low-level acoustics, overfits fast)
-  n_trainable_layers: 4    # keep only the top N of 12 transformer layers trainable (rest frozen); null = all
+  n_trainable_layers: 2    # keep only the top N of 12 transformer layers trainable (rest frozen); null = all
   epochs: 50
   batch_size: 32
   max_duration_sec: 4.0    # shorter clips than the probe to fit the backbone backward pass in 16 GB
