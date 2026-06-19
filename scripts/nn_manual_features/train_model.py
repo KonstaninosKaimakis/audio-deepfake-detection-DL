@@ -8,9 +8,9 @@ import torch.nn as nn
 from torch.optim import Adam
 from sklearn.metrics import classification_report
 
-from model import DeepfakeDetectorMLP
-from dataset import AudioFeatureDataset
-from utils import (
+from scripts.nn_manual_features.model import DeepfakeDetectorMLP
+from scripts.nn_manual_features.dataset import AudioFeatureDataset
+from scripts.nn_manual_features.utils import (
     load_config, seed_everything, build_dataloaders,
     make_tag_nn, plot_training_curves, plot_roc_auc, plot_comparisons,
 )
