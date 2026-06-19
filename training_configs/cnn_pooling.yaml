@@ -10,11 +10,28 @@ data:
 
 training:
   seed: 42
-  batch_size: 64
-  epochs: 100
-  learning_rate: 5.0e-4
+  batch_size: 32
+  epochs: 30
   early_stop_patience: 5
-  lr_reduce_patience: 5
   lr_reduce_factor: 0.5
+  lr_reduce_patience: 3
   num_workers: 2
-  output_dir: "/kaggle/working/deepfake_detection"
+  output_dir: "results/cnn"
+
+experiments:
+  # Baseline
+  - {depth: 3, base_channels: 32, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  # Vary depth
+  - {depth: 2, base_channels: 32, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  - {depth: 4, base_channels: 32, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  # Vary channel width
+  - {depth: 3, base_channels: 16, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  - {depth: 3, base_channels: 64, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  # Vary learning rate
+  - {depth: 3, base_channels: 32, lr: 1.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  - {depth: 3, base_channels: 32, lr: 1.0e-3, dropout: 0.5, weight_decay: 1.0e-4}
+  # Vary dropout
+  - {depth: 3, base_channels: 32, lr: 5.0e-4, dropout: 0.3, weight_decay: 1.0e-4}
+  # Vary weight decay
+  - {depth: 3, base_channels: 32, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-5}
+  - {depth: 3, base_channels: 32, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-3}

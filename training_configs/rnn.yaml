@@ -11,10 +11,27 @@ data:
 training:
   seed: 42
   batch_size: 64
-  epochs: 100
-  learning_rate: 5.0e-4
+  epochs: 30
   early_stop_patience: 5
-  lr_reduce_patience: 5
   lr_reduce_factor: 0.5
+  lr_reduce_patience: 3
   num_workers: 2
-  output_dir: "/kaggle/working/deepfake_detection"
+  output_dir: "results/rnn"
+
+experiments:
+  # Baseline (2 layers, hidden=128)
+  - {num_layers: 2, hidden_size: 128, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  # Vary depth
+  - {num_layers: 1, hidden_size: 128, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  - {num_layers: 3, hidden_size: 128, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  # Vary hidden size
+  - {num_layers: 2, hidden_size:  64, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  - {num_layers: 2, hidden_size: 256, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  # Vary learning rate
+  - {num_layers: 2, hidden_size: 128, lr: 1.0e-4, dropout: 0.5, weight_decay: 1.0e-4}
+  - {num_layers: 2, hidden_size: 128, lr: 1.0e-3, dropout: 0.5, weight_decay: 1.0e-4}
+  # Vary dropout
+  - {num_layers: 2, hidden_size: 128, lr: 5.0e-4, dropout: 0.3, weight_decay: 1.0e-4}
+  # Vary weight decay
+  - {num_layers: 2, hidden_size: 128, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-5}
+  - {num_layers: 2, hidden_size: 128, lr: 5.0e-4, dropout: 0.5, weight_decay: 1.0e-3}
