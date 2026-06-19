@@ -15,8 +15,11 @@ datasets>=2.12.0
 # --- Utilities & Progress Monitoring ---
 tqdm>=4.65.0
 matplotlib>=3.7.1
+seaborn>=0.12.0
 pandas>=2.0.0
+pyarrow>=12.0.0
 scikit-learn>=1.2.2
+PyYAML>=6.0
 
 # --- Optional: Experiment Tracking ---
 tensorboard>=2.13.0
