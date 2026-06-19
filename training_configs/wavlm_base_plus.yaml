@@ -17,7 +17,7 @@ training:
   epochs: 20
   batch_size: 32
   lr: 1.0e-3
-  output_dir: wavlm_base_plus
+  output_dir: results/wavlm_base_plus
 
 finetune:
   freeze_backbone: false   # false = fine-tune backbone (subject to partial-freeze knobs below)
@@ -33,7 +33,7 @@ finetune:
   grad_checkpointing: true # trade compute for VRAM (recompute activations in backward)
   num_workers: 8           # codec disabled below, so no ffmpeg ENOMEM risk -> full worker count for fast loading
   patience: 5              # early stop: stop if val loss hasn't improved for this many epochs
-  output_dir: wavlm_base_plus_finetune
+  output_dir: results/wavlm_base_plus_finetune
 
 augment:                   # online waveform augmentation, applied to the TRAIN split only
   enabled: true

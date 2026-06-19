@@ -224,3 +224,5 @@ data/*
 wavlm_base_plus/*
 outputs/*
 wavlm_base_plus_finetune/*
+
+results/*
