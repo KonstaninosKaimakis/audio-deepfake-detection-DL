@@ -1,0 +1,12 @@
+Model        : CRNNBaseline_mel
+Test accuracy: 0.8054
+AUC-ROC      : 0.8596
+
+              precision    recall  f1-score   support
+
+        Real     0.7783    0.9651    0.8617     19963
+        Fake     0.9008    0.5355    0.6717     11816
+
+    accuracy                         0.8054     31779
+   macro avg     0.8395    0.7503    0.7667     31779
+weighted avg     0.8238    0.8054    0.7911     31779

@@ -1,0 +1,16 @@
+=============================================
+TEST SET RESULTS
+=============================================
+Loss      : 1.4685
+Accuracy  : 66.84%
+ROC-AUC   : 0.7532
+
+Classification Report:
+              precision    recall  f1-score   support
+
+        Real       0.66      0.98      0.79     19735
+        Fake       0.83      0.14      0.24     11791
+
+    accuracy                           0.67     31526
+   macro avg       0.74      0.56      0.52     31526
+weighted avg       0.72      0.67      0.58     31526
