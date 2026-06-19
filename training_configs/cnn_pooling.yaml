@@ -10,7 +10,7 @@ data:
 
 training:
   seed: 42
-  batch_size: 32
+  batch_size: 64
   epochs: 30
   early_stop_patience: 5
   lr_reduce_factor: 0.5
