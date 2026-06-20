@@ -20,6 +20,7 @@ dependencies = [
     "torchaudio>=2.11.0",
     "tqdm>=4.68.2",
     "transformers>=5.11.0",
+    "umap-learn>=0.5.12",
 ]
 
 [[tool.uv.index]]

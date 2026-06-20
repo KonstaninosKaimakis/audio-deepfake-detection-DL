@@ -1,8 +1,10 @@
 import os
 import random
 import yaml
+import umap
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 from types import SimpleNamespace
 from torch.utils.data import DataLoader
 from scripts.wavlm.wavlm_augment import WavLMAugmentationPipeline
@@ -166,6 +168,86 @@ def build_finetune_optimizer(cfg, model):
 
 
 def build_finetune_scheduler(cfg, optimizer, num_training_steps):
-    
+
     num_warmup_steps = int(cfg.finetune.warmup_ratio * num_training_steps)
     return get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps)
+
+
+def plot_umap(dumps, out_path, seed=42, n_neighbors=15, min_dist=0.1):
+    """UMAP of saved embedding dumps, projected into ONE shared coordinate space.
+
+    dumps:    dict {domain_name: path_to_.pt}, e.g.
+              {"FoR": "results/.../val_<stamp>.pt", "ITW": "results/.../test_<stamp>.pt"}.
+              Each .pt holds embeddings (N, 768) + labels (N,) (0=real, 1=fake).
+    out_path: where to save the figure (.png).
+
+    Fits a single UMAP over all domains stacked together so the maps are directly
+    comparable -- the point is to see whether ITW real/fake overlap in the same space
+    where FoR separates cleanly (the negative-transfer signature). Returns the 2-D coords.
+    """
+    embs, labels, domains = [], [], []
+    for name, path in dumps.items():
+        d = torch.load(path, map_location="cpu")
+        embs.append(d["embeddings"].float().numpy())
+        labels.append(d["labels"].numpy())
+        domains += [name] * len(d["labels"])
+    X = np.concatenate(embs)          # (sum_N, 768)
+    y = np.concatenate(labels)        # 0=real, 1=fake
+    domains = np.array(domains)
+
+    reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist,
+                        random_state=seed, metric="cosine")
+    Z = reducer.fit_transform(X)      # (sum_N, 2)
+
+    # color = label (real/fake), marker = domain
+    fig, ax = plt.subplots(figsize=(8, 7))
+    markers = {name: m for name, m in zip(dumps, ["o", "x", "^", "s"])}
+    colors = {0: "tab:blue", 1: "tab:red"}
+    names = {0: "real", 1: "fake"}
+    for name in dumps:
+        for lab in (0, 1):
+            sel = (domains == name) & (y == lab)
+            ax.scatter(Z[sel, 0], Z[sel, 1], s=6, alpha=0.4,
+                       c=colors[lab], marker=markers[name],
+                       label=f"{name} {names[lab]}")
+    ax.legend(markerscale=2, fontsize=8)
+    ax.set_title("WavLM embedding UMAP (color=label, marker=domain)")
+    fig.tight_layout()
+    out_path = str(out_path)
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"saved UMAP -> {out_path}")
+    return Z
+
+
+def plot_score_hist(dumps, out_path, bins=50, threshold=0.5):
+    """Histogram of fake-prob scores split by true label, one panel per domain.
+
+    dumps:     dict {domain_name: path_to_.pt}; each .pt holds fake_prob (N,) + labels (N,).
+    threshold: vertical line at the decision threshold (default 0.5).
+
+    Visualizes threshold calibration: where the fixed 0.5 cut sits relative to the actual
+    real/fake score mass. A domain whose real & fake distributions straddle 0.5 poorly (but
+    are still separated) explains a low fixed-0.5 accuracy alongside a good EER/AUC.
+    """
+    items = list(dumps.items())
+    n = len(items)
+    fig, axes = plt.subplots(1, n, figsize=(6 * n, 4), squeeze=False)
+    for ax, (name, path) in zip(axes[0], items):
+        d = torch.load(path, map_location="cpu")
+        prob = d["fake_prob"].numpy()
+        y = d["labels"].numpy()
+        ax.hist(prob[y == 0], bins=bins, range=(0, 1), alpha=0.5,
+                color="tab:blue", label="real", density=True)
+        ax.hist(prob[y == 1], bins=bins, range=(0, 1), alpha=0.5,
+                color="tab:red", label="fake", density=True)
+        ax.axvline(threshold, color="k", ls="--", lw=1, label=f"thr={threshold}")
+        ax.set_title(name)
+        ax.set_xlabel("fake-prob")
+        ax.set_ylabel("density")
+        ax.legend(fontsize=8)
+    fig.tight_layout()
+    out_path = str(out_path)
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"saved score hist -> {out_path}")

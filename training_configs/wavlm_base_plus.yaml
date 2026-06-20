@@ -44,3 +44,8 @@ augment:                   # online waveform augmentation, applied to the TRAIN 
   p_rir:   0.5
   p_codec: 0.5             # prob of swapping in a pre-rendered codec variant (OFFLINE; run wavlm_precompute_codec.py)
   codec_cache_dir: data/codec_cache  # where wavlm_precompute_codec.py writes the variants
+
+analysis:
+  collect_embedding: true
+  output_dir: results/wavlm_base_plus_analysis
+  splits: ["test"]

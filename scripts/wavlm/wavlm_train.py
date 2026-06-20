@@ -8,7 +8,7 @@ from datetime import datetime
 from transformers import WavLMModel
 from scripts.wavlm.wavlm_dataset import WavLMDataset
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score
-from scripts.wavlm.utils import load_config, seed_everything, build_dataloaders, build_model, build_optimizer, build_scheduler, compute_eer, config_to_dict
+from scripts.wavlm.utils import load_config, seed_everything, build_dataloaders, build_model, build_optimizer, build_scheduler, compute_eer, config_to_dict, plot_umap, plot_score_hist
 from scripts.wavlm.wavlm_extract import load_or_extract, cached_loader
 
 
@@ -58,7 +58,7 @@ class WavLMClassifier(nn.Module):
         norm_weights = torch.softmax(self.layer_weights, dim=0).view(-1, 1)
         return torch.sum(layer_feats * norm_weights, dim=1)
 
-    def forward(self, input_values, attention_mask=None):
+    def forward(self, input_values, attention_mask=None, return_embedding=False):
         hidden_states = self.wavlm_model(
             input_values=input_values,
             attention_mask=attention_mask,
@@ -77,8 +77,14 @@ class WavLMClassifier(nn.Module):
             pooled = [h.mean(dim=1) for h in transformer_states]
 
         layer_feats = torch.stack(pooled, dim=1)   # (B, 12, 768)
-        logits = self.head(self.weighted_sum(layer_feats))
+        
+        embedding = self.weighted_sum(layer_feats)
+        
+        logits = self.head(embedding)
 
+        if return_embedding:
+            return logits, embedding
+        
         return logits
 
 
@@ -146,6 +152,21 @@ def evaluate_model(model, loader, device):
         "eer":            eer,
     }
     
+@torch.no_grad()
+def collect_embeddings_cached(model, feats, labels, device, batch_size=512):
+    # probe path: feats are cached Stage-1 features (N, 12, 768), so the 768-d embedding is
+    # just the weighted-sum -- no backbone re-run needed (the probe backbone is frozen anyway).
+    model.head.eval()
+    embs, probs = [], []
+    for i in range(0, len(feats), batch_size):
+        fb = feats[i:i + batch_size].to(device)
+        emb = model.weighted_sum(fb)                       # (B, 768)
+        logits = model.head(emb)
+        embs.append(emb.cpu())
+        probs.append(torch.softmax(logits, dim=1)[:, 1].cpu())   # fake-prob
+    return torch.cat(embs), labels, torch.cat(probs)
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -227,3 +248,32 @@ if __name__ == "__main__":
     with open(metrics_path, "w") as f:
         json.dump(results, f, indent=2, default=float)   # default=float casts any numpy scalars
     print(f"\nSaved metrics -> {metrics_path}")
+
+    analysis = getattr(cfg, "analysis", None)
+
+    if analysis is not None and getattr(analysis, "collect_embedding", False):
+        emb_dir = Path(analysis.output_dir)
+        emb_dir.mkdir(parents=True, exist_ok=True)
+        split_data  = {"train": (train_feats, train_labels),
+                       "val":   (val_feats,   val_labels),
+                       "test":  (test_feats,  test_labels)}
+        split_names = {"val": "FoR", "test": "ITW", "train": "train"}   # display labels for the plot
+        saved = {}
+
+        for split in analysis.splits:
+            feats, labels = split_data[split]
+            emb, lab, prob = collect_embeddings_cached(model, feats, labels, device)
+            out_path = emb_dir / f"probe_{split}_{stamp}.pt"
+            torch.save({"embeddings": emb, "labels": lab, "fake_prob": prob}, out_path)
+            print(f"  saved embeddings [{split}] {tuple(emb.shape)} -> {out_path}")
+            saved[split_names[split]] = out_path
+
+        try:
+            plot_umap(saved, emb_dir / f"probe_umap_{stamp}.png")
+        except Exception as e:
+            print(f"  UMAP skipped ({type(e).__name__}: {e}) -- dumps are saved, plot later")
+
+        try:
+            plot_score_hist(saved, emb_dir / f"probe_scorehist_{stamp}.png")
+        except Exception as e:
+            print(f"  score hist skipped ({type(e).__name__}: {e}) -- dumps are saved, plot later")

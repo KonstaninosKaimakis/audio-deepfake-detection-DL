@@ -20,6 +20,8 @@ from scripts.wavlm.utils import (
     build_finetune_scheduler,
     compute_eer,
     config_to_dict,
+    plot_umap,
+    plot_score_hist,
 )
 
 
@@ -98,6 +100,25 @@ def evaluate(model, loader, device):
         "eer":            eer,
     }
 
+@torch.no_grad()
+def collect_embeddings(model, loader, device):
+    model.eval()
+    embs, labels, probs = [], [], []
+    for x, mask, y in loader:
+        x, mask = x.to(device), mask.to(device)
+        
+        with _autocast(device):
+            logits, emb = model(
+                x, 
+                attention_mask=mask, 
+                return_embedding=True
+                )
+        
+        embs.append(emb.float().cpu())  # (B, 768)
+        probs.append(torch.softmax(logits.float(), dim=1)[:, 1].cpu())  # fake-prob, for histograms/ROC
+        labels.append(y)
+        
+    return torch.cat(embs), torch.cat(labels), torch.cat(probs)    
 
 if __name__ == "__main__":
     import argparse
@@ -130,12 +151,33 @@ if __name__ == "__main__":
 
     model = build_model(cfg, WavLMClassifier, device, freeze_backbone=cfg.finetune.freeze_backbone)
     # partial fine-tune: freeze the conv feature encoder + bottom transformer layers (anti-overfit)
+    
+    
     if not cfg.finetune.freeze_backbone:
-        n_trainable_layers = getattr(cfg.finetune, "n_trainable_layers", None)
-        freeze_feature_encoder = getattr(cfg.finetune, "freeze_feature_encoder", True)
-        apply_partial_freeze(model, n_trainable_layers, freeze_feature_encoder)
-        print(f"Partial freeze: top {n_trainable_layers} transformer layers trainable, "
-              f"freeze_feature_encoder={freeze_feature_encoder}")
+        
+        n_trainable_layers = getattr(
+            cfg.finetune, 
+            "n_trainable_layers", 
+            None
+            )
+        
+        freeze_feature_encoder = getattr(
+            cfg.finetune, 
+            "freeze_feature_encoder", 
+            True
+            )
+
+        apply_partial_freeze(
+            model, 
+            n_trainable_layers, 
+            freeze_feature_encoder
+            )
+
+        print(
+            f"Partial freeze: top {n_trainable_layers} transformer layers trainable, "
+            f"freeze_feature_encoder={freeze_feature_encoder}"
+            )
+        
     if cfg.finetune.grad_checkpointing:
         model.wavlm_model.gradient_checkpointing_enable()
 
@@ -156,18 +198,26 @@ if __name__ == "__main__":
     for epoch in range(1, cfg.finetune.epochs + 1):
         tr_loss, tr_acc = train_epoch(model, train_loader, optimizer, scheduler, device)
         val = evaluate(model, val_loader, device)
-        print(f"Epoch {epoch:02d} | train loss {tr_loss:.4f}  acc {tr_acc:.3f} | "
-              f"val loss {val['loss']:.4f}  acc {val['acc']:.3f}  auc {val['auc']:.3f}")
+        
+        print(
+            f"Epoch {epoch:02d} | train loss {tr_loss:.4f}  acc {tr_acc:.3f} | "
+            f"val loss {val['loss']:.4f}  acc {val['acc']:.3f}  auc {val['auc']:.3f}"
+            )
+        
         if val["loss"] < best_loss:
             best_loss = val["loss"]
             epochs_no_improve = 0
             torch.save(model.state_dict(), best_path)
-            print(f"  saved best (val_loss={best_loss:.4f})")
+            print(
+                f"  saved best (val_loss={best_loss:.4f})"
+                )
         else:
             epochs_no_improve += 1
             if patience and epochs_no_improve >= patience:
-                print(f"  early stop: no val-loss improvement for {patience} epochs "
-                      f"(best={best_loss:.4f} @ epoch {epoch - epochs_no_improve})")
+                print(
+                    f"  early stop: no val-loss improvement for {patience} epochs "
+                    f"(best={best_loss:.4f} @ epoch {epoch - epochs_no_improve})"
+                    )
                 break
 
     # final evaluation with the best-val checkpoint: in-domain (FoR) + cross-dataset (ITW)
@@ -206,3 +256,30 @@ if __name__ == "__main__":
     with open(metrics_path, "w") as f:
         json.dump(results, f, indent=2, default=float)   # default=float casts any numpy scalars
     print(f"\nSaved metrics -> {metrics_path}")
+
+    analysis = getattr(cfg, "analysis", None)
+
+    if analysis is not None and getattr(analysis, "collect_embedding", False):
+        emb_dir = Path(analysis.output_dir)
+        emb_dir.mkdir(parents=True, exist_ok=True)
+        split_loaders = {"train": train_loader, "val": val_loader, "test": test_loader}
+        split_names   = {"val": "FoR", "test": "ITW", "train": "train"}   # display labels for the plot
+        saved = {}
+
+        for split in analysis.splits:
+            loader = split_loaders[split]
+            emb, lab, prob = collect_embeddings(model, loader, device)
+            out_path = emb_dir / f"{split}_{stamp}.pt"
+            torch.save({"embeddings": emb, "labels": lab, "fake_prob": prob}, out_path)
+            print(f"  saved embeddings [{split}] {tuple(emb.shape)} -> {out_path}")
+            saved[split_names[split]] = out_path
+
+        try:
+            plot_umap(saved, emb_dir / f"umap_{stamp}.png")
+        except Exception as e:
+            print(f"  UMAP skipped ({type(e).__name__}: {e}) -- dumps are saved, plot later")
+
+        try:
+            plot_score_hist(saved, emb_dir / f"scorehist_{stamp}.png")
+        except Exception as e:
+            print(f"  score hist skipped ({type(e).__name__}: {e}) -- dumps are saved, plot later")
