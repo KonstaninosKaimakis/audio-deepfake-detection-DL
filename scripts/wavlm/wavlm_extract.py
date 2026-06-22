@@ -30,7 +30,31 @@ def extract_features(model, loader, device, desc="extracting"):
     return torch.cat(all_feats), torch.cat(all_labels)
 
 
-def load_or_extract(model, loader, cache_path, device):
+@torch.no_grad()
+def extract_xvectors(model, loader, device, desc="extracting"):
+    # x-vector probe: one 512-d embedding per clip from the frozen WavLMForXVector (model.embed
+    # already L2-normalizes). Cacheable like the layer-sum feats -> same {features, labels} format.
+    model.eval()
+    all_feats = []
+    all_labels = []
+    n_degenerate = 0   # ultra-short clips zeroed by model.embed (NaN std pooling) -> zero-norm row
+
+    for x, mask, y in tqdm(loader, desc=desc, leave=False):
+        x, mask = x.to(device), mask.to(device)
+        emb = model.embed(x, mask)            # (B, 512)
+        n_degenerate += int((emb.norm(dim=1) == 0).sum())
+        all_feats.append(emb.cpu())
+        all_labels.append(y)
+
+    if n_degenerate:
+        print(f"  WARNING: {n_degenerate} ultra-short clip(s) produced a degenerate (zeroed) "
+              f"x-vector and won't contribute signal.")
+    return torch.cat(all_feats), torch.cat(all_labels)
+
+
+def load_or_extract(model, loader, cache_path, device, extract_fn=extract_features):
+    # extract_fn lets callers swap the layer-sum extractor (default) for extract_xvectors,
+    # reusing the same cache load/save logic.
     cache_path = Path(cache_path)
     if cache_path.exists():
         print(f"  loading cache  {cache_path}")
@@ -38,7 +62,7 @@ def load_or_extract(model, loader, cache_path, device):
         return data["features"], data["labels"]
 
     print(f"  extracting  ->  {cache_path}")
-    feats, labels = extract_features(model, loader, device, desc=f"extract {cache_path.stem}")
+    feats, labels = extract_fn(model, loader, device, desc=f"extract {cache_path.stem}")
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"features": feats, "labels": labels}, cache_path)
     return feats, labels

@@ -21,8 +21,8 @@ training:
 
 finetune:
   freeze_backbone: false   # false = fine-tune backbone (subject to partial-freeze knobs below)
-  freeze_feature_encoder: true  # freeze the conv feature encoder (low-level acoustics, overfits fast)
-  n_trainable_layers: 2    # keep only the top N of 12 transformer layers trainable (rest frozen); null = all
+  freeze_feature_encoder: true  # top-2 recipe: freeze the conv feature encoder
+  n_trainable_layers: 2    # top-2 recipe: only the top 2 of 12 transformer layers trainable
   epochs: 50
   batch_size: 32
   max_duration_sec: 4.0    # shorter clips than the probe to fit the backbone backward pass in 16 GB
@@ -31,7 +31,7 @@ finetune:
   warmup_ratio: 0.1
   weight_decay: 1.0e-2
   grad_checkpointing: true # trade compute for VRAM (recompute activations in backward)
-  num_workers: 8           # codec disabled below, so no ffmpeg ENOMEM risk -> full worker count for fast loading
+  num_workers: 8           
   patience: 5              # early stop: stop if val loss hasn't improved for this many epochs
   output_dir: results/wavlm_base_plus_finetune
 

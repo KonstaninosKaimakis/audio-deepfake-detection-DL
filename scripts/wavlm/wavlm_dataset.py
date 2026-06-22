@@ -17,6 +17,8 @@ class WavLMDataset(Dataset):
         augment = None,
         codec_cache_dir = None,
         p_codec = 0.0,
+        normalize_waveform = True,
+        min_duration_sec = None,
         ):
         self.extractor = extractor
         self.labels = labels
@@ -25,12 +27,14 @@ class WavLMDataset(Dataset):
         self.return_attention_mask = return_attention_mask
         self.sample_rate = sample_rate
         self.augment = augment   # callable(waveform)->waveform, TRAIN split only; None = off
+        self.normalize_waveform = normalize_waveform
         self.p_codec = p_codec   # prob of loading a pre-rendered codec variant instead of the original
         split_dir = Path(split_directory)
         if max_duration_sec is not None:
             self.max_samples = int(max_duration_sec * sample_rate)
         else:
             self.max_samples = None
+        self.min_valid_samples = int(min_duration_sec * sample_rate) if min_duration_sec else None
         self.samples: list[tuple[Path, int]] = []
 
         for class_name, label in self.labels.items():
@@ -75,7 +79,6 @@ class WavLMDataset(Dataset):
         path, label = self.samples[idx]
 
         # offline codec: with prob p_codec, load a pre-rendered codec-degraded variant of this file
-        # (no ffmpeg in workers). Online noise/RIR (self.augment) is then applied on top.
         if self.codec_variants and random.random() < self.p_codec:
             variants = self.codec_variants.get((path.parent.name, path.stem))
             if variants:
@@ -87,9 +90,7 @@ class WavLMDataset(Dataset):
             wav = self.augment(wav)          # numpy in -> numpy out (noise / RIR)
         wav = torch.from_numpy(wav)
 
-        # removes per-domain level/gain differences (FoR vs ITW) that widen the domain gap.
-        # guard 1-sample/empty clips: var() needs >=2 samples or it returns NaN -> poisons features.
-        if wav.numel() > 1:
+        if self.normalize_waveform and wav.numel() > 1:
             wav = (wav - wav.mean()) / torch.sqrt(wav.var() + 1e-7)
 
         if wav.shape[0] >= self.max_samples:
@@ -101,6 +102,10 @@ class WavLMDataset(Dataset):
             real_len = wav.shape[0]
             wav = torch.nn.functional.pad(wav, (0, self.max_samples - real_len))
             mask = torch.zeros(self.max_samples, dtype=torch.long)
-            mask[:real_len] = 1
+            
+            valid_len = real_len
+            if self.min_valid_samples is not None:
+                valid_len = min(max(real_len, self.min_valid_samples), self.max_samples)
+            mask[:valid_len] = 1
  
         return wav, mask, torch.tensor(label, dtype=torch.long)
