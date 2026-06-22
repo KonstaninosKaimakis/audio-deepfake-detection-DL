@@ -226,3 +226,9 @@ outputs/*
 wavlm_base_plus_finetune/*
 
 results/*
+
+*.png
+*.jpg
+*.pdf
+*.tmp
+*.pptx

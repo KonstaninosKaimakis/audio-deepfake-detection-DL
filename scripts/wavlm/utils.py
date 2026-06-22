@@ -22,8 +22,6 @@ def load_config(path):
 
 
 def config_to_dict(cfg):
-    # recursively convert a SimpleNamespace config back to a plain dict, so the actual
-    # resolved config (not just the file path) can be embedded in the metrics JSON.
     if isinstance(cfg, SimpleNamespace):
         return {k: config_to_dict(v) for k, v in vars(cfg).items()}
     if isinstance(cfg, (list, tuple)):
@@ -73,7 +71,8 @@ def build_augmentation(cfg):
 
 
 def build_dataloaders(cfg, dataset_class, max_duration_sec=None, batch_size=None,
-                      augment_train=False, num_workers=None):
+                      augment_train=False, num_workers=None, normalize_waveform=True,
+                      min_duration_sec=None):
     # overrides let the fine-tune track use shorter clips / smaller batch than the probe
     max_duration_sec = max_duration_sec if max_duration_sec is not None else cfg.data.max_duration_sec
     batch_size       = batch_size       if batch_size       is not None else cfg.training.batch_size
@@ -100,7 +99,9 @@ def build_dataloaders(cfg, dataset_class, max_duration_sec=None, batch_size=None
             sample_rate=cfg.data.sample_rate,
             augment=augment,
             codec_cache_dir=codec_cache_dir,
-            p_codec=p_codec
+            p_codec=p_codec,
+            normalize_waveform=normalize_waveform,   # x-vector SV track passes False (raw audio)
+            min_duration_sec=min_duration_sec,       # x-vector SV track sets a floor (avoid 1-frame std NaN)
         )
 
     train_ds = _ds(
@@ -142,13 +143,6 @@ def apply_partial_freeze(model, n_trainable_layers=None, freeze_feature_encoder=
                 p.requires_grad = False
     return model
 
-
-# def build_optimizer(cfg, model):
-#     return torch.optim.AdamW([
-#         {"params": model.wavlm.parameters(), "lr": cfg.training.lr * 0.1},
-#         {"params": model.head.parameters(),  "lr": cfg.training.lr},
-#     ], weight_decay=1e-2)
-
 def build_optimizer(cfg, model):
     trainable = [p for p in model.parameters() if p.requires_grad]
     return torch.optim.AdamW(trainable, lr=cfg.training.lr, weight_decay=1e-2)
@@ -174,17 +168,6 @@ def build_finetune_scheduler(cfg, optimizer, num_training_steps):
 
 
 def plot_umap(dumps, out_path, seed=42, n_neighbors=15, min_dist=0.1):
-    """UMAP of saved embedding dumps, projected into ONE shared coordinate space.
-
-    dumps:    dict {domain_name: path_to_.pt}, e.g.
-              {"FoR": "results/.../val_<stamp>.pt", "ITW": "results/.../test_<stamp>.pt"}.
-              Each .pt holds embeddings (N, 768) + labels (N,) (0=real, 1=fake).
-    out_path: where to save the figure (.png).
-
-    Fits a single UMAP over all domains stacked together so the maps are directly
-    comparable -- the point is to see whether ITW real/fake overlap in the same space
-    where FoR separates cleanly (the negative-transfer signature). Returns the 2-D coords.
-    """
     embs, labels, domains = [], [], []
     for name, path in dumps.items():
         d = torch.load(path, map_location="cpu")
@@ -221,15 +204,6 @@ def plot_umap(dumps, out_path, seed=42, n_neighbors=15, min_dist=0.1):
 
 
 def plot_score_hist(dumps, out_path, bins=50, threshold=0.5):
-    """Histogram of fake-prob scores split by true label, one panel per domain.
-
-    dumps:     dict {domain_name: path_to_.pt}; each .pt holds fake_prob (N,) + labels (N,).
-    threshold: vertical line at the decision threshold (default 0.5).
-
-    Visualizes threshold calibration: where the fixed 0.5 cut sits relative to the actual
-    real/fake score mass. A domain whose real & fake distributions straddle 0.5 poorly (but
-    are still separated) explains a low fixed-0.5 accuracy alongside a good EER/AUC.
-    """
     items = list(dumps.items())
     n = len(items)
     fig, axes = plt.subplots(1, n, figsize=(6 * n, 4), squeeze=False)
